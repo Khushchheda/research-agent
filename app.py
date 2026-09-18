@@ -82,15 +82,41 @@ def get_api_key():
         return os.getenv("GEMINI_API_KEY")
 
 
-def get_model_name():
+def get_configured_model():
     try:
-        return (
-            st.secrets.get("GEMINI_MODEL")
-            or os.getenv("GEMINI_MODEL")
-            or "gemini-2.5-flash"
-        )
+        return st.secrets.get("GEMINI_MODEL") or os.getenv("GEMINI_MODEL")
     except FileNotFoundError:
-        return os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+        return os.getenv("GEMINI_MODEL")
+
+
+def get_model_name(api_key):
+    response = requests.get(
+        "https://generativelanguage.googleapis.com/v1beta/models",
+        headers={**REQUEST_HEADERS, "x-goog-api-key": api_key},
+        timeout=10,
+    )
+    response.raise_for_status()
+
+    models = [
+        model
+        for model in response.json().get("models", [])
+        if "generateContent" in model.get("supportedGenerationMethods", [])
+    ]
+    configured_model = get_configured_model()
+
+    if configured_model:
+        configured_name = configured_model.removeprefix("models/")
+        for model in models:
+            if model["name"].removeprefix("models/") == configured_name:
+                return model["name"]
+
+    preferred_models = ("flash", "pro")
+    for preference in preferred_models:
+        for model in models:
+            if preference in model["name"].lower():
+                return model["name"]
+
+    raise RuntimeError("The Gemini API key has no model that supports generateContent.")
 
 
 def generate_report(question, research_notes):
@@ -116,8 +142,8 @@ def generate_report(question, research_notes):
         f"Question: {question}\n\n{source_text}"
     )
     response = requests.post(
-        "https://generativelanguage.googleapis.com/v1beta/models/"
-        + get_model_name()
+        "https://generativelanguage.googleapis.com/v1beta/"
+        + get_model_name(api_key)
         + ":generateContent",
         headers={
             **REQUEST_HEADERS,
