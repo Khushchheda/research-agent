@@ -1,5 +1,6 @@
 import os
 import re
+import time
 from urllib.parse import quote, urlparse
 from urllib.robotparser import RobotFileParser
 
@@ -91,7 +92,7 @@ def get_configured_model():
         return os.getenv("GEMINI_MODEL")
 
 
-def get_model_name(client):
+def get_model_names(client):
     models = [
         model
         for model in client.models.list()
@@ -104,7 +105,7 @@ def get_model_name(client):
         if not configured_name.startswith("gemini-2.5-"):
             for model in models:
                 if model.name.removeprefix("models/") == configured_name:
-                    return model.name.removeprefix("models/")
+                    return [model.name.removeprefix("models/")]
 
     preferred_models = (
         "gemini-3.6-flash",
@@ -118,19 +119,26 @@ def get_model_name(client):
         for model in models
     }
 
+    selected_models = []
     for preference in preferred_models:
         if preference in available_names:
-            return preference
+            selected_models.append(preference)
 
     for model in models:
-        if "flash" in model.name.lower():
-            return model.name.removeprefix("models/")
+        model_name = model.name.removeprefix("models/")
+        if "flash" in model.name.lower() and model_name not in selected_models:
+            selected_models.append(model_name)
 
     for model in models:
-        if "pro" in model.name.lower():
-            return model.name.removeprefix("models/")
+        model_name = model.name.removeprefix("models/")
+        if "pro" in model.name.lower() and model_name not in selected_models:
+            selected_models.append(model_name)
 
-    raise RuntimeError("The Gemini API key has no model that supports generateContent.")
+    if not selected_models:
+        raise RuntimeError(
+            "The Gemini API key has no model that supports generateContent."
+        )
+    return selected_models
 
 
 def generate_report(question, research_notes):
@@ -166,11 +174,31 @@ def generate_report(question, research_notes):
         f"Question: {question}\n\n{source_text}"
     )
     client = genai.Client(api_key=api_key)
-    response = client.models.generate_content(
-        model=get_model_name(client),
-        contents=prompt,
-        config={"temperature": 0.2},
-    )
+    response = None
+    last_error = None
+    for model_name in get_model_names(client):
+        for attempt in range(2):
+            try:
+                response = client.models.generate_content(
+                    model=model_name,
+                    contents=prompt,
+                    config={"temperature": 0.2},
+                )
+                break
+            except Exception as error:
+                last_error = error
+                error_text = str(error).upper()
+                is_overloaded = "503" in error_text or "UNAVAILABLE" in error_text
+                if not is_overloaded or attempt == 1:
+                    break
+                time.sleep(2)
+        else:
+            continue
+        if response is not None:
+            break
+    else:
+        raise last_error
+
     report = re.split(
         r"(?im)^#{1,6}\s+sources\s*$",
         response.text,
