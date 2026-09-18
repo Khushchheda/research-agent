@@ -82,6 +82,17 @@ def get_api_key():
         return os.getenv("GEMINI_API_KEY")
 
 
+def get_model_name():
+    try:
+        return (
+            st.secrets.get("GEMINI_MODEL")
+            or os.getenv("GEMINI_MODEL")
+            or "gemini-2.5-flash"
+        )
+    except FileNotFoundError:
+        return os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+
+
 def generate_report(question, research_notes):
     api_key = get_api_key()
 
@@ -106,10 +117,13 @@ def generate_report(question, research_notes):
     )
     response = requests.post(
         "https://generativelanguage.googleapis.com/v1beta/models/"
-        + os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
+        + get_model_name()
         + ":generateContent",
-        params={"key": api_key},
-        headers={**REQUEST_HEADERS, "Content-Type": "application/json"},
+        headers={
+            **REQUEST_HEADERS,
+            "Content-Type": "application/json",
+            "x-goog-api-key": api_key,
+        },
         json={
             "contents": [
                 {"parts": [{"text": prompt}]}
