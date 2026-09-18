@@ -100,15 +100,34 @@ def get_model_name(client):
 
     if configured_model:
         configured_name = configured_model.removeprefix("models/")
-        for model in models:
-            if model.name.removeprefix("models/") == configured_name:
-                return model.name.removeprefix("models/")
+        if not configured_name.startswith("gemini-2.5-"):
+            for model in models:
+                if model.name.removeprefix("models/") == configured_name:
+                    return model.name.removeprefix("models/")
 
-    preferred_models = ("flash", "pro")
+    preferred_models = (
+        "gemini-3.6-flash",
+        "gemini-3.8-flash",
+        "gemini-3.7-flash",
+        "gemini-3.5-flash",
+        "gemini-3.1-flash-lite",
+    )
+    available_names = {
+        model.name.removeprefix("models/")
+        for model in models
+    }
+
     for preference in preferred_models:
-        for model in models:
-            if preference in model.name.lower():
-                return model.name.removeprefix("models/")
+        if preference in available_names:
+            return preference
+
+    for model in models:
+        if "flash" in model.name.lower():
+            return model.name.removeprefix("models/")
+
+    for model in models:
+        if "pro" in model.name.lower():
+            return model.name.removeprefix("models/")
 
     raise RuntimeError("The Gemini API key has no model that supports generateContent.")
 
