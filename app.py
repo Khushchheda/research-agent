@@ -1,6 +1,13 @@
 import streamlit as st
 import requests
 from bs4 import BeautifulSoup
+from urllib.parse import urlparse
+from urllib.robotparser import RobotFileParser
+
+USER_AGENT = "ResearchAgent/1.0 (+https://github.com/Khushchheda/research-agent)"
+REQUEST_HEADERS = {
+    "User-Agent": USER_AGENT
+}
 
 st.title("🔎 Research Agent")
 
@@ -16,14 +23,52 @@ def search_web(query):
         "https://www.britannica.com/technology/artificial-intelligence"
     ]
 
+def can_fetch(url):
+
+    parsed_url = urlparse(url)
+    robots_url = f"{parsed_url.scheme}://{parsed_url.netloc}/robots.txt"
+
+    try:
+        response = requests.get(
+            robots_url,
+            headers=REQUEST_HEADERS,
+            timeout=10
+        )
+
+        if response.status_code == 404:
+            return True, ""
+
+        response.raise_for_status()
+
+        robots = RobotFileParser()
+        robots.set_url(robots_url)
+        robots.parse(response.text.splitlines())
+
+        if robots.can_fetch(USER_AGENT, url):
+            return True, ""
+
+        return False, f"Blocked by {robots_url}"
+
+    except requests.RequestException as error:
+        return False, f"Could not read {robots_url}: {error}"
+
+
 def read_url(url):
+
+    allowed, reason = can_fetch(url)
+
+    if not allowed:
+        return f"Skipped: {reason}"
 
     try:
 
         response = requests.get(
             url,
+            headers=REQUEST_HEADERS,
             timeout=10
         )
+
+        response.raise_for_status()
 
         soup = BeautifulSoup(
             response.text,
@@ -45,7 +90,7 @@ def calculate_confidence(research_notes):
         content = note["content"]
 
         if (
-            "Error" not in content
+            not content.startswith(("Error:", "Skipped:"))
             and len(content) > 500
         ):
             valid_sources += 1
