@@ -1,4 +1,5 @@
 import os
+import re
 from urllib.parse import quote, urlparse
 from urllib.robotparser import RobotFileParser
 
@@ -170,15 +171,18 @@ def generate_report(question, research_notes):
         contents=prompt,
         config={"temperature": 0.2},
     )
-    report = response.text
+    report = re.split(
+        r"(?im)^#{1,6}\s+sources\s*$",
+        response.text,
+        maxsplit=1,
+    )[0].rstrip()
     for url, label in source_labels.items():
         report = report.replace(f"[{url}]", label).replace(url, label)
 
-    if "## Sources" not in report:
-        report += "\n\n## Sources\n"
-        report += "\n".join(
-            f"{label} {url}" for url, label in source_labels.items()
-        )
+    report += "\n\n## Sources\n"
+    report += "\n".join(
+        f"{label} {url}" for url, label in source_labels.items()
+    )
 
     return report
 
