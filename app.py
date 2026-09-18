@@ -5,6 +5,7 @@ from urllib.robotparser import RobotFileParser
 import requests
 import streamlit as st
 from bs4 import BeautifulSoup
+from google import genai
 
 USER_AGENT = "ResearchAgent/1.0 (+https://github.com/Khushchheda/research-agent)"
 REQUEST_HEADERS = {"User-Agent": USER_AGENT}
@@ -89,32 +90,25 @@ def get_configured_model():
         return os.getenv("GEMINI_MODEL")
 
 
-def get_model_name(api_key):
-    response = requests.get(
-        "https://generativelanguage.googleapis.com/v1beta/models",
-        headers={**REQUEST_HEADERS, "x-goog-api-key": api_key},
-        timeout=10,
-    )
-    response.raise_for_status()
-
+def get_model_name(client):
     models = [
         model
-        for model in response.json().get("models", [])
-        if "generateContent" in model.get("supportedGenerationMethods", [])
+        for model in client.models.list()
+        if "generateContent" in model.supported_actions
     ]
     configured_model = get_configured_model()
 
     if configured_model:
         configured_name = configured_model.removeprefix("models/")
         for model in models:
-            if model["name"].removeprefix("models/") == configured_name:
-                return model["name"]
+            if model.name.removeprefix("models/") == configured_name:
+                return model.name.removeprefix("models/")
 
     preferred_models = ("flash", "pro")
     for preference in preferred_models:
         for model in models:
-            if preference in model["name"].lower():
-                return model["name"]
+            if preference in model.name.lower():
+                return model.name.removeprefix("models/")
 
     raise RuntimeError("The Gemini API key has no model that supports generateContent.")
 
@@ -141,25 +135,13 @@ def generate_report(question, research_notes):
         "Key findings, and Limitations.\n\n"
         f"Question: {question}\n\n{source_text}"
     )
-    response = requests.post(
-        "https://generativelanguage.googleapis.com/v1beta/"
-        + get_model_name(api_key)
-        + ":generateContent",
-        headers={
-            **REQUEST_HEADERS,
-            "Content-Type": "application/json",
-            "x-goog-api-key": api_key,
-        },
-        json={
-            "contents": [
-                {"parts": [{"text": prompt}]}
-            ],
-            "generationConfig": {"temperature": 0.2},
-        },
-        timeout=30,
+    client = genai.Client(api_key=api_key)
+    response = client.models.generate_content(
+        model=get_model_name(client),
+        contents=prompt,
+        config={"temperature": 0.2},
     )
-    response.raise_for_status()
-    return response.json()["candidates"][0]["content"]["parts"][0]["text"]
+    return response.text
 
 
 def calculate_confidence(research_notes):
