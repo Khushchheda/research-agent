@@ -167,8 +167,8 @@ def generate_report(question, research_notes):
     prompt = (
         "You are a careful research assistant. Answer only from the provided "
         "sources. Cite claims with numbered references such as [1] or [2]. "
-        "Do not write full URLs inside the report. Include a numbered Sources "
-        "section at the end that maps each number to its URL. If the sources "
+        "Do not write full URLs or a Sources section inside the report. The "
+        "application will display the source links separately. If the sources "
         "are insufficient, say so. Return Markdown with the headings Short "
         "answer, Key findings, and Limitations.\n\n"
         f"Question: {question}\n\n{source_text}"
@@ -206,11 +206,6 @@ def generate_report(question, research_notes):
     )[0].rstrip()
     for url, label in source_labels.items():
         report = report.replace(f"[{url}]", label).replace(url, label)
-
-    report += "\n\n## Sources\n"
-    report += "\n".join(
-        f"{label} {url}" for url, label in source_labels.items()
-    )
 
     return report
 
