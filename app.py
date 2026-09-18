@@ -138,10 +138,18 @@ def generate_report(question, research_notes):
     if not api_key:
         return None
 
-    source_text = "\n\n".join(
-        f"SOURCE: {note['url']}\n{note['content'][:3500]}"
+    usable_notes = [
+        note
         for note in research_notes
         if not note["content"].startswith(("Error:", "Skipped:"))
+    ]
+    source_labels = {
+        note["url"]: f"[{index}]"
+        for index, note in enumerate(usable_notes, start=1)
+    }
+    source_text = "\n\n".join(
+        f"SOURCE [{index}]: {note['url']}\n{note['content'][:3500]}"
+        for index, note in enumerate(usable_notes, start=1)
     )
 
     if not source_text:
@@ -149,9 +157,11 @@ def generate_report(question, research_notes):
 
     prompt = (
         "You are a careful research assistant. Answer only from the provided "
-        "sources. Cite claims using the source URLs. If the sources are "
-        "insufficient, say so. Return Markdown with the headings Short answer, "
-        "Key findings, and Limitations.\n\n"
+        "sources. Cite claims with numbered references such as [1] or [2]. "
+        "Do not write full URLs inside the report. Include a numbered Sources "
+        "section at the end that maps each number to its URL. If the sources "
+        "are insufficient, say so. Return Markdown with the headings Short "
+        "answer, Key findings, and Limitations.\n\n"
         f"Question: {question}\n\n{source_text}"
     )
     client = genai.Client(api_key=api_key)
@@ -160,7 +170,17 @@ def generate_report(question, research_notes):
         contents=prompt,
         config={"temperature": 0.2},
     )
-    return response.text
+    report = response.text
+    for url, label in source_labels.items():
+        report = report.replace(f"[{url}]", label).replace(url, label)
+
+    if "## Sources" not in report:
+        report += "\n\n## Sources\n"
+        report += "\n".join(
+            f"{label} {url}" for url, label in source_labels.items()
+        )
+
+    return report
 
 
 def calculate_confidence(research_notes):
